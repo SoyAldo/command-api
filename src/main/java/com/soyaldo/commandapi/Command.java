@@ -1,24 +1,21 @@
 package com.soyaldo.commandapi;
 
-import com.soyaldo.commandapi.interfaces.ConsoleExecution;
-import com.soyaldo.commandapi.interfaces.ConsoleOptionsRequest;
-import com.soyaldo.commandapi.interfaces.PlayerExecution;
-import com.soyaldo.commandapi.interfaces.PlayerOptionsRequest;
-import lombok.Getter;
-import org.bukkit.command.CommandExecutor;
-import org.bukkit.command.CommandSender;
-import org.bukkit.command.ConsoleCommandSender;
-import org.bukkit.command.TabCompleter;
+import com.soyaldo.commandapi.interfaces.*;
+import org.bukkit.Bukkit;
+import org.bukkit.command.*;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.java.JavaPlugin;
 
+import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 
-public class Command implements CommandExecutor, TabCompleter {
+public class Command extends org.bukkit.command.Command implements CommandExecutor, TabCompleter {
 
-    @Getter
-    private final String name;
+    private BothOptionsRequest bothOptionsRequest;
+    private BothExecution bothExecution;
     private PlayerOptionsRequest playerOptionsRequest;
     private PlayerExecution playerExecution;
     private ConsoleOptionsRequest consoleOptionsRequest;
@@ -26,12 +23,26 @@ public class Command implements CommandExecutor, TabCompleter {
     private HashMap<String, Command> subCommands = new HashMap<>();
 
     public Command(String name) {
-        this.name = name;
-
+        super(name);
     }
 
     public static Command create(String name) {
         return new Command(name);
+    }
+
+    public Command setBothOptions(BothOptionsRequest bothOptionsRequest) {
+        this.bothOptionsRequest = bothOptionsRequest;
+        return this;
+    }
+
+    public Command setBothOptions(String bothOptionsRequest) {
+        this.playerOptionsRequest = (commandSender, previousArguments, currentArgument, nextArguments) -> bothOptionsRequest;
+        return this;
+    }
+
+    public Command setBothExecution(BothExecution bothExecution) {
+        this.bothExecution = bothExecution;
+        return this;
     }
 
     public Command setPlayerOptions(PlayerOptionsRequest playerOptionsRequest) {
@@ -69,100 +80,264 @@ public class Command implements CommandExecutor, TabCompleter {
         return this;
     }
 
-    public void onPlayerCommand(Player player, String[] arguments, int index) {
-        if (subCommands.isEmpty()) {
+
+    private void run(CommandSender commandSender, String[] previousArguments, String currentArgument, String[] nextArguments) {
+
+        if (bothExecution != null) {
+            bothExecution.onExecute(commandSender, previousArguments, currentArgument, nextArguments);
+            return;
+        }
+
+        if (commandSender instanceof Player) {
             if (playerExecution == null) return;
-            if (arguments.length >= 1) {
-                if (index == -1) {
-                    playerExecution.onExecute(player, new String[]{}, getName(), Arrays.copyOfRange(arguments, 1, arguments.length));
-                } else if (index == 0) {
-                    playerExecution.onExecute(
-                            player,
-                            new String[]{},
-                            arguments[index],
-                            Arrays.copyOfRange(arguments, index + 1, arguments.length)
-                    );
-                } else {
-                    playerExecution.onExecute(
-                            player,
-                            Arrays.copyOfRange(arguments, 0, index),
-                            arguments[index],
-                            Arrays.copyOfRange(arguments, index + 1, arguments.length)
-                    );
-                }
-            } else {
-                playerExecution.onExecute(player, new String[]{}, "", new String[]{});
-            }
+            playerExecution.onExecute((Player) commandSender, previousArguments, currentArgument, nextArguments);
         } else {
-            if (arguments.length > 1) {
-                Command command;
-                if (subCommands.containsKey("*")) {
-                    command = subCommands.get("*");
-                } else {
-                    command = subCommands.get(arguments[0]);
-                }
-                if (command == null) return;
-                command.onPlayerCommand(player, arguments, index + 1);
-            }
-        }
-    }
-
-    public void onConsoleCommand(ConsoleCommandSender consoleCommandSender, String[] arguments, int index) {
-        if (subCommands.isEmpty()) {
             if (consoleExecution == null) return;
+            consoleExecution.onExecute((ConsoleCommandSender) commandSender, previousArguments, currentArgument, nextArguments);
+        }
+
+    }
+
+    public void onCommand2(CommandSender commandSender, String[] arguments, int index) {
+
+        String[] previousArguments;
+        String currentArgument;
+        String[] nextArguments;
+
+        switch (index) {
+            case -1: {
+                previousArguments = new String[] {};
+                currentArgument = getName();
+                nextArguments = arguments;
+                break;
+            }
+            case 0: {
+                previousArguments = new String[] {};
+                currentArgument = arguments[index];
+                nextArguments = Arrays.copyOfRange(arguments, index + 1, arguments.length);
+                break;
+            }
+            default: {
+                previousArguments = Arrays.copyOfRange(arguments, 0, index);
+                currentArgument = arguments[index];
+                nextArguments = Arrays.copyOfRange(arguments, index + 1, arguments.length);
+                break;
+            }
+        }
+
+        if (currentArgument.equals("")) {
+            run(commandSender, previousArguments, currentArgument, nextArguments);
+            return;
+        }
+
+        if (subCommands.containsKey("*")) {
+            Command command = subCommands.get("*");
+            command.onCommand2(commandSender, arguments, index + 1);
+            return;
+        }
+
+        if (subCommands.containsKey(currentArgument)) {
+            Command command = subCommands.get(currentArgument);
+            command.onCommand2(commandSender, arguments, index + 1);
+        }
+
+    }
+
+    public void onCommand(CommandSender commandSender, String[] arguments, int index) {
+        if (subCommands.isEmpty()) {
             if (arguments.length >= 1) {
                 if (index == -1) {
-                    consoleExecution.onExecute(consoleCommandSender, new String[]{}, getName(), Arrays.copyOfRange(arguments, 1, arguments.length));
+
+                    if (bothExecution == null) {
+                        if (commandSender instanceof Player) {
+                            if (playerExecution != null) {
+                                playerExecution.onExecute((Player) commandSender, new String[]{}, getName(), Arrays.copyOfRange(arguments, 1, arguments.length));
+                            }
+                        } else {
+                            if (consoleExecution != null) {
+                                consoleExecution.onExecute((ConsoleCommandSender) commandSender, new String[]{}, getName(), Arrays.copyOfRange(arguments, 1, arguments.length));
+                            }
+                        }
+                    } else {
+                        bothExecution.onExecute(commandSender, new String[]{}, getName(), Arrays.copyOfRange(arguments, 1, arguments.length));
+                    }
+
                 } else if (index == 0) {
-                    consoleExecution.onExecute(
-                            consoleCommandSender,
-                            new String[]{},
-                            arguments[index],
-                            Arrays.copyOfRange(arguments, index + 1, arguments.length)
-                    );
+
+                    if (bothExecution == null) {
+                        if (commandSender instanceof Player) {
+                            if (playerExecution != null) {
+                                playerExecution.onExecute((Player) commandSender, new String[]{}, arguments[index], Arrays.copyOfRange(arguments, index + 1, arguments.length));
+                            }
+                        } else {
+                            if (consoleExecution != null) {
+                                consoleExecution.onExecute((ConsoleCommandSender) commandSender, new String[]{}, arguments[index], Arrays.copyOfRange(arguments, index + 1, arguments.length));
+                            }
+                        }
+                    } else {
+                        bothExecution.onExecute(commandSender, new String[]{}, arguments[index], Arrays.copyOfRange(arguments, index + 1, arguments.length));
+                    }
+
                 } else {
-                    consoleExecution.onExecute(
-                            consoleCommandSender,
-                            Arrays.copyOfRange(arguments, 0, index),
-                            arguments[index],
-                            Arrays.copyOfRange(arguments, index + 1, arguments.length)
-                    );
+
+                    if (bothExecution == null) {
+                        if (commandSender instanceof Player) {
+                            if (playerExecution != null) {
+                                playerExecution.onExecute((Player) commandSender, Arrays.copyOfRange(arguments, 0, index), arguments[index], Arrays.copyOfRange(arguments, index + 1, arguments.length));
+                            }
+                        } else {
+                            if (consoleExecution != null) {
+                                consoleExecution.onExecute((ConsoleCommandSender) commandSender, Arrays.copyOfRange(arguments, 0, index), arguments[index], Arrays.copyOfRange(arguments, index + 1, arguments.length));
+                            }
+                        }
+                    } else {
+                        bothExecution.onExecute(commandSender, Arrays.copyOfRange(arguments, 0, index), arguments[index], Arrays.copyOfRange(arguments, index + 1, arguments.length));
+                    }
+
                 }
             } else {
-                consoleExecution.onExecute(consoleCommandSender, new String[]{}, "", new String[]{});
+
+                if (bothExecution == null) {
+                    if (commandSender instanceof Player) {
+                        if (playerExecution != null) {
+                            playerExecution.onExecute((Player) commandSender, new String[]{}, "", new String[]{});
+                        }
+                    } else {
+                        if (consoleExecution != null) {
+                            consoleExecution.onExecute((ConsoleCommandSender) commandSender, new String[]{}, "", new String[]{});
+                        }
+                    }
+                } else {
+                    bothExecution.onExecute(commandSender, new String[]{}, "", new String[]{});
+                }
+
             }
         } else {
-            if (arguments.length > 1) {
-                Command command;
+            if (arguments.length > 0) {
+                Command command = null;
                 if (subCommands.containsKey("*")) {
                     command = subCommands.get("*");
                 } else {
-                    command = subCommands.get(arguments[0]);
+                    if (index > -1) {
+                        command = subCommands.get(arguments[index]);
+                    }
                 }
-                if (command == null) return;
-                command.onConsoleCommand(consoleCommandSender, arguments, index + 1);
-            }
-        }
-    }
+                if (command != null) {
+                    command.onCommand(commandSender, arguments, index + 1);
+                } else {
+                    if (index == -1) {
 
-    public void onCommand(CommandSender commandSender, String[] args) {
-        if (subCommands.size() == 0) {
-            if (commandSender instanceof Player) {
-                onPlayerCommand((Player) commandSender, args, -1);
+                        if (bothExecution == null) {
+                            if (commandSender instanceof Player) {
+                                if (playerExecution != null) {
+                                    playerExecution.onExecute((Player) commandSender, new String[]{}, getName(), Arrays.copyOfRange(arguments, 1, arguments.length));
+                                }
+                            } else {
+                                if (consoleExecution != null) {
+                                    consoleExecution.onExecute((ConsoleCommandSender) commandSender, new String[]{}, getName(), Arrays.copyOfRange(arguments, 1, arguments.length));
+                                }
+                            }
+                        } else {
+                            bothExecution.onExecute(commandSender, new String[]{}, getName(), Arrays.copyOfRange(arguments, 1, arguments.length));
+                        }
+
+                    } else if (index == 0) {
+
+                        if (bothExecution == null) {
+                            if (commandSender instanceof Player) {
+                                if (playerExecution != null) {
+                                    playerExecution.onExecute((Player) commandSender, new String[]{}, arguments[index], Arrays.copyOfRange(arguments, index + 1, arguments.length));
+                                }
+                            } else {
+                                if (consoleExecution != null) {
+                                    consoleExecution.onExecute((ConsoleCommandSender) commandSender, new String[]{}, arguments[index], Arrays.copyOfRange(arguments, index + 1, arguments.length));
+                                }
+                            }
+                        } else {
+                            bothExecution.onExecute(commandSender, new String[]{}, arguments[index], Arrays.copyOfRange(arguments, index + 1, arguments.length));
+                        }
+
+                    } else {
+
+                        if (bothExecution == null) {
+                            if (commandSender instanceof Player) {
+                                if (playerExecution != null) {
+                                    playerExecution.onExecute((Player) commandSender, Arrays.copyOfRange(arguments, 0, index), arguments[index], Arrays.copyOfRange(arguments, index + 1, arguments.length));
+                                }
+                            } else {
+                                if (consoleExecution != null) {
+                                    consoleExecution.onExecute((ConsoleCommandSender) commandSender, Arrays.copyOfRange(arguments, 0, index), arguments[index], Arrays.copyOfRange(arguments, index + 1, arguments.length));
+                                }
+                            }
+                        } else {
+                            bothExecution.onExecute(commandSender, Arrays.copyOfRange(arguments, 0, index), arguments[index], Arrays.copyOfRange(arguments, index + 1, arguments.length));
+                        }
+
+                    }
+                }
             } else {
-                onConsoleCommand((ConsoleCommandSender) commandSender, args, -1);
+                if (bothExecution == null) {
+                    if (commandSender instanceof Player) {
+                        if (playerExecution != null) {
+                            playerExecution.onExecute((Player) commandSender, new String[]{}, "", new String[]{});
+                        }
+                    } else {
+                        if (consoleExecution != null) {
+                            consoleExecution.onExecute((ConsoleCommandSender) commandSender, new String[]{}, "", new String[]{});
+                        }
+                    }
+                } else {
+                    bothExecution.onExecute(commandSender, new String[]{}, "", new String[]{});
+                }
             }
         }
     }
 
     @Override
-    public boolean onCommand(CommandSender commandSender, org.bukkit.command.Command command, String label, String[] args) {
-        onCommand(commandSender, args);
+    public boolean onCommand(CommandSender commandSender, org.bukkit.command.Command command, String commandLabel, String[] args) {
+        onCommand(commandSender, args, -1);
         return true;
     }
 
     @Override
-    public List<String> onTabComplete(CommandSender sender, org.bukkit.command.Command command, String alias, String[] args) {
-        return null;
+    public boolean execute(CommandSender commandSender, String commandLabel, String[] args) {
+        onCommand(commandSender, args, -1);
+        return true;
     }
+
+    public String onTabComplete(CommandSender commandSender, String[] args, int index) {
+        commandSender.sendMessage("Args:" + String.join(",", args));
+        commandSender.sendMessage("Length:" + args.length);
+        commandSender.sendMessage("Length Split:" + String.join(",", args).split(",").length);
+        commandSender.sendMessage("Index:" + index);
+        return "";
+    }
+
+    @Override
+    public List<String> onTabComplete(CommandSender sender, org.bukkit.command.Command command, String alias, String[] args) {
+        String result = onTabComplete(sender, args, -1);
+        if (result.equals("")) {
+            return new ArrayList<>();
+        } else {
+            return Arrays.asList(result.split(","));
+        }
+    }
+
+    public void registerCommand(JavaPlugin javaPlugin) {
+        PluginCommand pluginCommand = javaPlugin.getCommand(getName());
+        if (pluginCommand == null) {
+            try {
+                final Field bukkitCommandMap = Bukkit.getServer().getClass().getDeclaredField("commandMap");
+                bukkitCommandMap.setAccessible(true);
+                CommandMap commandMap = (CommandMap) bukkitCommandMap.get(Bukkit.getServer());
+                commandMap.register(getName(), this);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        } else {
+            pluginCommand.setExecutor(this);
+            pluginCommand.setTabCompleter(this);
+        }
+    }
+
 }

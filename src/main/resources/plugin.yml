@@ -1,0 +1,9 @@
+main: com.soyaldo.commandapitest.CommandApiTest
+name: CommandApiTest
+api-version: 1.13
+author: SoyAldo
+version: 1.0.0-ALPHA
+website: https://soyaldo.com/resources/command-api
+commands:
+  CommandApiTest:
+    description: "Command to test the command-api"

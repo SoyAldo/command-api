@@ -1,13 +1,43 @@
 package com.soyaldo.commandapi;
 
-import com.soyaldo.commandapi.interfaces.PlayerOptionsRequest;
 import org.bukkit.Material;
-import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
 public class example {
 
     public static void main(String[] args) {
+
+        Command.create("")
+                .setBothOptions("help,reload,version")
+                .addSubCommand(
+                        Command.create("help")
+                                .setPlayerExecution(
+                                        (player, previousArguments, currentArgument, nextArguments) -> {
+                                            player.sendMessage("Help message for players");
+                                        }
+                                )
+                                .setConsoleExecution(
+                                        (consoleCommandSender, previousArguments, currentArgument, nextArguments) -> {
+                                            consoleCommandSender.sendMessage("Help message for console");
+                                        }
+                                )
+                )
+                .addSubCommand(
+                        Command.create("reload")
+                                .setBothExecution(
+                                        (commandSender, previousArguments, currentArgument, nextArguments) -> {
+                                            commandSender.sendMessage("Reloaded");
+                                        }
+                                )
+                )
+                .addSubCommand(
+                        Command.create("version")
+                                .setBothExecution(
+                                        (commandSender, previousArguments, currentArgument, nextArguments) -> {
+                                            commandSender.sendMessage("");
+                                        }
+                                )
+                );
 
         Command.create("item")
                 .addSubCommand(

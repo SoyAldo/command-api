@@ -9,5 +9,8 @@
         <module name="command-api" />
       </profile>
     </annotationProcessing>
+    <bytecodeTargetLevel>
+      <module name="command-api-testing" target="1.8" />
+    </bytecodeTargetLevel>
   </component>
 </project>
